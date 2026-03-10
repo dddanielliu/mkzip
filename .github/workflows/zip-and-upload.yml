@@ -73,5 +73,5 @@ jobs:
         name: repository-zips
         path: |
           .
-          .gitkeep
+          .*
         retention-days: 5
