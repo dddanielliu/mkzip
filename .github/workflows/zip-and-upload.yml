@@ -71,7 +71,6 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: repository-zips
-        path: |
-          .
-          .gitkeep
+        path: .
+        include-hidden-files: true
         retention-days: 5
