@@ -13,24 +13,63 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Create zip archive
+    - name: Process and Re-zip Unix Zips for Windows Compatibility
       run: |
-        $excludePaths = @('.git', '.gitignore', '.github')
-        $sourcePath = Get-Location
-        $zipFileName = "repo.zip"
-        
-        # Get all files and directories, then filter out excluded paths
-        # Note: The -Exclude parameter in Get-ChildItem works on the name of the item.
-        # For more robust exclusion including nested content of excluded directories,
-        # a more complex filtering might be needed.
-        # This currently excludes top-level .git, .gitignore, .github.
-        $itemsToZip = Get-ChildItem -Path $sourcePath | Where-Object { $_.Name -notin $excludePaths }
-        Compress-Archive -Path $itemsToZip -DestinationPath $zipFileName
+        $repoRoot = Get-Location
+        $tempZipDir = New-Item -Path (Join-Path $env:TEMP "original_zips_to_process") -ItemType Directory
+        $tempExtractDir = New-Item -Path (Join-Path $env:TEMP "extracted_zip_contents") -ItemType Directory
+
+        # Find all .zip files in the repo root
+        $zipFiles = Get-ChildItem -Path $repoRoot -Filter "*.zip" -Recurse -Depth 0
+
+        if ($zipFiles.Count -eq 0) {
+            Write-Host "No .zip files found in the repository root to process."
+        } else {
+            Write-Host "Found $($zipFiles.Count) .zip files in the repository root. Processing..."
+            foreach ($zipFile in $zipFiles) {
+                Write-Host "Processing $($zipFile.Name)..."
+
+                # Move original zip to temp processing directory
+                $originalZipPath = $zipFile.FullName
+                $tempOriginalZipPath = Join-Path $tempZipDir $zipFile.Name
+                Move-Item -Path $originalZipPath -Destination $tempOriginalZipPath -Force
+
+                # Ensure extract directory is empty
+                Remove-Item -Path (Join-Path $tempExtractDir "*") -Recurse -Force -ErrorAction SilentlyContinue
+
+                # Extract with 7z (assuming 7z is available on Windows runner)
+                & "C:\Program Files\7-Zip\7z.exe" x "$tempOriginalZipPath" -o"$tempExtractDir" -y
+                
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Error "7z extraction failed for $($zipFile.Name) with exit code $LASTEXITCODE"
+                    continue # Skip to next zip if extraction fails
+                }
+
+                # Re-zip contents with Windows native Compress-Archive
+                # This ensures Windows compatibility and preserves original structure
+                $itemsToZip = Get-ChildItem -Path $tempExtractDir | Where-Object { $_.Name -ne ".." -and $_.Name -ne "." }
+                if ($itemsToZip.Count -eq 0) {
+                    Write-Host "No contents found to re-zip from $($zipFile.Name). Skipping re-zip."
+                } else {
+                    Compress-Archive -Path $itemsToZip -DestinationPath (Join-Path $repoRoot $zipFile.Name) -Force
+
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Error "Re-zipping failed for $($zipFile.Name) with exit code $LASTEXITCODE"
+                    } else {
+                        Write-Host "Successfully re-zipped $($zipFile.Name) for Windows compatibility."
+                    }
+                }
+            }
+        }
+
+        # Clean up temporary directories
+        Remove-Item -Path $tempZipDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
       shell: pwsh
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: repository-zip
-        path: repo.zip
+        name: repository-with-windows-compatible-zips
+        path: . # Upload the entire repository
         retention-days: 5
