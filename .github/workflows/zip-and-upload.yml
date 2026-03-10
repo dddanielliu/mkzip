@@ -1,0 +1,37 @@
+name: Zip and Upload Repository
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Create zip archive
+      run: |
+        $excludePaths = @('.git', '.gitignore', '.github')
+        $sourcePath = Get-Location
+        $zipFileName = "repo.zip"
+        
+        # Get all files and directories, then filter out excluded paths
+        # Note: The -Exclude parameter in Get-ChildItem works on the name of the item.
+        # For more robust exclusion including nested content of excluded directories,
+        # a more complex filtering might be needed.
+        # This currently excludes top-level .git, .gitignore, .github.
+        $itemsToZip = Get-ChildItem -Path $sourcePath | Where-Object { $_.Name -notin $excludePaths }
+        Compress-Archive -Path $itemsToZip -DestinationPath $zipFileName
+      shell: pwsh
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: repository-zip
+        path: repo.zip
+        retention-days: 5
