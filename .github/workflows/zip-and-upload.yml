@@ -2,8 +2,7 @@ name: Zip and Upload Repository
 
 on:
   push:
-    branches:
-      - main
+  pull_request:
   workflow_dispatch:
 
 jobs:
